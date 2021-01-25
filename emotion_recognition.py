@@ -1,9 +1,10 @@
 import cv2 as cv
 import numpy as np
 from fer import FER
-from tkinter import Tk, Canvas, Button, filedialog, Checkbutton, Label, IntVar
-from tkinter.ttk import Combobox
+from tkinter import Tk, Canvas, filedialog, Checkbutton, Label, IntVar, Scale, HORIZONTAL
+from tkinter.ttk import Combobox, Button, Radiobutton
 from PIL import ImageTk, Image
+
 
 def detectAndDisplay(frame):
     global face_cascade
@@ -60,23 +61,33 @@ def detectAndDisplay(frame):
 def blur(frame):
     global current_blur
 
+    blur_type, blur_intensity = current_blur
+
     blur_frame = frame.copy()
     
-    if current_blur == "Blur":
-        blur_frame = cv.blur(blur_frame, (5, 5))
-    elif current_blur == "Gaussian Blur":
-        blur_frame = cv.GaussianBlur(blur_frame, (5, 5), 0)
-    elif current_blur == "Median Blur":
-        blur_frame = cv.medianBlur(blur_frame, 5)
-    elif current_blur == "Bilateral Filtering":
-        blur_frame = cv.bilateralFilter(blur_frame,9,75,75)
+    if blur_type == "Blur":
+        if blur_intensity == 0:
+            blur_intensity += 1 
+        blur_frame = cv.blur(blur_frame, (blur_intensity, blur_intensity))
+    elif blur_type == "Gaussian Blur":
+        if not blur_intensity % 2:
+            blur_intensity += 1 
+        blur_frame = cv.GaussianBlur(blur_frame, (blur_intensity, blur_intensity), 0)
+    elif blur_type == "Median Blur":
+        if not blur_intensity % 2:
+            blur_intensity += 1 
+        blur_frame = cv.medianBlur(blur_frame, blur_intensity)
+    elif blur_type == "Bilateral Filtering":
+        blur_frame = cv.bilateralFilter(blur_frame,9,blur_intensity*25,blur_intensity*25)
 
     return blur_frame
 
 
-def canny(frame, lower = None, upper = None):
+def canny(frame):
     global canny_active
+    global current_canny
 
+    lower, upper = current_canny
     v = np.median(frame)
     sigma = 0.33
 
@@ -89,7 +100,7 @@ def canny(frame, lower = None, upper = None):
 
     edged = cv.Canny(edged, lower, upper)
 
-    return edged
+    return cv.cvtColor(edged, cv.COLOR_GRAY2RGB)
 
 def load_cascades():
     face_cascade_name = 'data/haarcascade_frontalface_alt.xml'
@@ -128,14 +139,18 @@ def detect_emotions(frame):
 def create_image(frame):
     global image_tk
     global hightlight_parts
+    global canny_active
 
     frame = blur(frame)
 
     frame = detect_emotions(frame)
 
+    if canny_active:
+        frame = canny(frame)
+
     if hightlight_parts:
-        frame = detectAndDisplay(current_image)
-    
+        frame = detectAndDisplay(frame)
+
     image = Image.fromarray(frame)
     image_tk = ImageTk.PhotoImage(image.resize((400,400)))
     canvas.create_image(10, 10, anchor="nw", image=image_tk)
@@ -145,8 +160,9 @@ def load_image():
     global current_image
 
     file = filedialog.askopenfilename(initialdir="./", title="Select an image", filetypes=(("png", "*.png"), ("jpg", "*.jpg"),( "All files", "*")))
-    current_image = cv.imread(file)
-    create_image(current_image)
+    if file:
+        current_image = cv.imread(file)
+        create_image(current_image)
 
 
 def show_vid():
@@ -171,6 +187,7 @@ def show_vid():
 def camera_switch():
     global camera
     global cap
+    global image_path
     global current_image
 
     camera = not camera
@@ -179,6 +196,7 @@ def camera_switch():
         if cap.isOpened:
             show_vid()
     else:
+        current_image = cv.imread(image_path)
         create_image(current_image)
 
 
@@ -193,18 +211,41 @@ def highlight_switch():
 def canny_switch():
     global canny_active
     global current_image
+    global current_canny
 
     canny_active = not canny_active
 
     create_image(current_image)
 
 
+def canny_change_scale(e):
+    global scale_upper_canny
+    global scale_lower_canny
+    global current_image
+    global current_canny
+
+    current_canny = (scale_lower_canny.get(), scale_upper_canny.get())
+
+    create_image(current_image)
+
+
+def identification_selected():
+    global current_image
+    global identification_type
+    global detector
+
+    detector = FER() if identification_type.get() == 2 else FER(mtcnn=True)
+    
+    create_image(current_image)
+
+
 def blur_selected(e):
     global combobox_blur
+    global scale_blur
     global current_image
     global current_blur
 
-    current_blur = combobox_blur.get()
+    current_blur = (combobox_blur.get(), scale_blur.get())
 
     create_image(current_image)
 
@@ -215,40 +256,86 @@ if __name__ == "__main__":
     detector = FER()
 
     root = Tk(className="Emotion Recognition") 
+    root.columnconfigure(3, weight=2)
+    root.columnconfigure(2, weight=1)
+    root.resizable(False, False)
 
     image_path = "./lena.jpg"
     current_image = cv.imread(image_path)
     camera = False
-    hightlight_parts = IntVar(value=1)
-    canny_active = IntVar(value=1)
-    current_blur = "None"
+    hightlight_parts = False
+    canny_active = False
+    identification_type = IntVar(value=2)
+    current_canny = (0,255)
+    current_blur = (None, 0)
 
     canvas = Canvas(root, width=400, height=400)  
     canvas.grid(column=0,row=0, columnspan=2, rowspan=12)
 
-    create_image(current_image)
-
-    button_load_image = Button(root, text ="Load Image", command = load_image)
-    button_load_image.grid(column = 0, row=13)
+    button_load_image = Button(root, text ="Load Image", command = load_image, padding=5)
+    button_load_image.grid(column = 0, row=13, ipadx=30, pady=10)
     
-    button_camera = Button(root, text ="Switch Camera ON/OFF", command = camera_switch)
-    button_camera.grid(column = 1, row=13)
+    button_camera = Button(root, text ="Switch Camera ON/OFF", command = camera_switch, padding=5)
+    button_camera.grid(column = 1, row=13, ipadx=30, pady=10)
     
-    checkbox_hightlight = Checkbutton(root, text='Highlight parts',variable=hightlight_parts, command=highlight_switch)
-    checkbox_hightlight.grid(column = 2, row=0, padx=10)
+    label_preprocessing = Label(root, text="Identification", font='Helvetica 12 bold')
+    label_preprocessing.grid(column = 2, columnspan=2,row=0)
 
-    checkbox_canny = Checkbutton(root, text='Activate Canny',variable=canny_active, command=canny_switch)
-    checkbox_canny.grid(column = 2, row=1, padx=10)
+    identification_mtcnn = Radiobutton(root, text='MTCNN network', variable=identification_type, value=1,command=identification_selected)
+    identification_opencv = Radiobutton(root, text='OpenCV\'s Haar Cascade classifier', variable=identification_type, value=2,command=identification_selected)
 
-    label_preprocessing = Label(root, text="Preprocessing", font='Helvetica 12 bold', padx=20)
-    label_preprocessing.grid(column = 2, row=2)
+    identification_mtcnn.grid(column = 2, row=1, padx=10)
+    identification_opencv.grid(column = 3, row=1, padx=10)
 
-    blur_opts = ["None", "Blur", "Gaussian Blur", "Median Blur", "Bilateral Filtering"]
+    label_preprocessing = Label(root, text="Preprocessing", font='Helvetica 12 bold')
+    label_preprocessing.grid(column = 2, row=2, columnspan=2,padx=10)
+
+    label_blur = Label(root, text="Blurring", font='Helvetica 12')
+    label_blur.grid(column = 2, row=3, columnspan=2,padx=10)
+
+    label_blur_type = Label(root, text="Type:", font='Helvetica 10')
+    label_blur_type.grid(column = 2, row=4, padx=10, sticky="e")
+
+    blur_opts = [None, "Blur", "Gaussian Blur", "Median Blur", "Bilateral Filtering"]
     combobox_blur = Combobox(root, value=blur_opts)
     combobox_blur.current(0)
     combobox_blur.bind("<<ComboboxSelected>>", blur_selected)
-    combobox_blur.grid(column = 2, row=3)
+    combobox_blur.grid(column = 3, row=4, padx=10, sticky="w")
 
+    label_blur_scale = Label(root, text="Intensity:", font='Helvetica 10')
+    label_blur_scale.grid(column = 2, row=5, padx=10, sticky="e")
+
+    scale_blur = Scale(root, from_=0, to=20, orient=HORIZONTAL, length=200, showvalue=0,tickinterval=5, resolution=1, command=blur_selected)
+    scale_blur.set(5)
+    scale_blur.grid(column = 3, row=5, padx=10,sticky="sw")
+
+    label_canny = Label(root, text="Canny", font='Helvetica 12')
+    label_canny.grid(column = 2, row=6, columnspan=2,padx=10)
+
+    checkbox_canny = Checkbutton(root, text='Activate Canny',variable=IntVar(), command=canny_switch)
+    checkbox_canny.grid(column = 2, row=7, columnspan=2, padx=10)
+
+    label_canny_lower_scale = Label(root, text="Lower:", font='Helvetica 10')
+    label_canny_lower_scale.grid(column = 2, row=8, padx=10, sticky="e")
+
+    scale_lower_canny = Scale(root, from_=0, to=255, orient=HORIZONTAL, length=200, showvalue=0,tickinterval=128, resolution=1, command=canny_change_scale)
+    scale_lower_canny.set(127)
+    scale_lower_canny.grid(column = 3, row=8, padx=10,sticky="sw")
+
+    label_canny_upper_scale = Label(root, text="Upper:", font='Helvetica 10')
+    label_canny_upper_scale.grid(column = 2, row=9, padx=10, sticky="e")
+
+    scale_upper_canny = Scale(root, from_=0, to=255, orient=HORIZONTAL, length=200, showvalue=0,tickinterval=128, resolution=1, command=canny_change_scale)
+    scale_upper_canny.set(255)
+    scale_upper_canny.grid(column = 3, row=9, padx=10,sticky="sw")
+
+    label_extra = Label(root, text="Extra", font='Helvetica 12 bold')
+    label_extra.grid(column = 2, row=10, columnspan=2,padx=10)
+
+    checkbox_hightlight = Checkbutton(root, text='Highlight parts',variable=IntVar(), command=highlight_switch)
+    checkbox_hightlight.grid(column = 2, row=11, columnspan=2,padx=10)
+
+    create_image(current_image)
 
     root.mainloop() 
 
