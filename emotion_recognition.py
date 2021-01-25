@@ -5,7 +5,31 @@ from tkinter import Tk, Canvas, filedialog, Checkbutton, Label, IntVar, Scale, H
 from tkinter.ttk import Combobox, Button, Radiobutton
 from PIL import ImageTk, Image
 
+############### Setup method ###############
+def load_cascades():
+    face_cascade_name = 'data/haarcascade_frontalface_alt.xml'
+    eyes_cascade_name = 'data/haarcascade_eye.xml'
+    mouth_cascade_name = 'data/haarcascade_mcs_mouth.xml'
+    face_cascade = cv.CascadeClassifier()
+    eyes_cascade = cv.CascadeClassifier()
+    mouth_cascade = cv.CascadeClassifier()
 
+    if not face_cascade.load(cv.samples.findFile(face_cascade_name)):
+        print('--(!)Error loading face cascade')
+        exit(0)
+
+    if not eyes_cascade.load(cv.samples.findFile(eyes_cascade_name)):
+        print('--(!)Error loading eyes cascade')
+        exit(0)
+
+    if not mouth_cascade.load(cv.samples.findFile(mouth_cascade_name)):
+        print('--(!)Error loading mouth_eyebrow cascade')
+        exit(0)
+
+    return face_cascade, eyes_cascade, mouth_cascade
+
+
+############### Implementation methods ###############
 def detectAndDisplay(frame):
     global face_cascade
     global eyes_cascade
@@ -16,7 +40,7 @@ def detectAndDisplay(frame):
 
     #-- Detect faces
     faces = face_cascade.detectMultiScale(frame_gray)
-    eye_threshold_y = 1
+    eye_threshold_y = 0.6
     mouth_threshold_y = 0.9
     eyebrows_threshold_y = 0.5
 
@@ -102,28 +126,6 @@ def canny(frame):
 
     return cv.cvtColor(edged, cv.COLOR_GRAY2RGB)
 
-def load_cascades():
-    face_cascade_name = 'data/haarcascade_frontalface_alt.xml'
-    eyes_cascade_name = 'data/haarcascade_eye.xml'
-    mouth_cascade_name = 'data/haarcascade_mcs_mouth.xml'
-    face_cascade = cv.CascadeClassifier()
-    eyes_cascade = cv.CascadeClassifier()
-    mouth_cascade = cv.CascadeClassifier()
-
-    if not face_cascade.load(cv.samples.findFile(face_cascade_name)):
-        print('--(!)Error loading face cascade')
-        exit(0)
-
-    if not eyes_cascade.load(cv.samples.findFile(eyes_cascade_name)):
-        print('--(!)Error loading eyes cascade')
-        exit(0)
-
-    if not mouth_cascade.load(cv.samples.findFile(mouth_cascade_name)):
-        print('--(!)Error loading mouth_eyebrow cascade')
-        exit(0)
-
-    return face_cascade, eyes_cascade, mouth_cascade
-
 
 def detect_emotions(frame):
     global detector
@@ -136,6 +138,7 @@ def detect_emotions(frame):
     return frame
 
 
+############### Facade method ###############
 def create_image(frame):
     global image_tk
     global hightlight_parts
@@ -156,10 +159,11 @@ def create_image(frame):
     canvas.create_image(10, 10, anchor="nw", image=image_tk)
     
 
+############### Image load methods ###############
 def load_image():
     global current_image
 
-    file = filedialog.askopenfilename(initialdir="./", title="Select an image", filetypes=(("png", "*.png"), ("jpg", "*.jpg"),( "All files", "*")))
+    file = filedialog.askopenfilename(initialdir="./images", title="Select an image", filetypes=(("png", "*.png"), ("jpg", "*.jpg"),( "All files", "*")))
     if file:
         current_image = cv.imread(file)
         create_image(current_image)
@@ -184,6 +188,7 @@ def show_vid():
     root.after(10, show_vid)
 
 
+############### Event methods ###############
 def camera_switch():
     global camera
     global cap
@@ -250,17 +255,18 @@ def blur_selected(e):
     create_image(current_image)
 
 
+############### Main method ###############
 if __name__ == "__main__":
     face_cascade, eyes_cascade, mouth_cascade = load_cascades()
 
     detector = FER()
 
-    root = Tk(className="Emotion Recognition") 
+    root = Tk(className=" Emotion Recognition") 
     root.columnconfigure(3, weight=2)
     root.columnconfigure(2, weight=1)
     root.resizable(False, False)
 
-    image_path = "./lena.jpg"
+    image_path = "./images/lena.jpg"
     current_image = cv.imread(image_path)
     camera = False
     hightlight_parts = False
